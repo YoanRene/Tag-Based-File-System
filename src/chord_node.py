@@ -233,6 +233,7 @@ class ChordNode:
                         print("Predecessor dead",flush=True)
                         self.pred = self.find_pred(self.pred.id)
                         if self.pred.id == self.id:
+                            self.succ=self.ref
                             self.pred = None
                         else:
                             self.pred.notify_pred(self.ref)
