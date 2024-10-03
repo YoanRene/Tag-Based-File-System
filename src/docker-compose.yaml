@@ -1,0 +1,26 @@
+version: '3'
+services:
+  chord-node-1:
+    build: .
+    container_name: chord-node-1
+    ports:
+      #- "5000:5000"  # Puerto de la aplicación (puedes cambiarlo según tu app)
+      - "8001:8001"  # Puerto para el debugger
+      - "8004:8002"
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
+    #command: ["python","chord_node.py"]
+  chord-node-2:
+    build: .
+    container_name: chord-node-2
+    ports:
+      - "8002:8001"  # Mapea el puerto 5001 del host al puerto 5678 del contenedor
+    #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5679", "chord_node.py"]
+    command: ["python","chord_node.py"]
+
+  chord-node-3:
+    build: .
+    container_name: chord-node-3
+    ports:
+      - "8003:8001"  # Mapea el puerto 5002 del host al puerto 5678 del contenedor
+    #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5680", "chord_node.py"]
+    command: ["python","chord_node.py"]
