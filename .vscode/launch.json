@@ -51,12 +51,45 @@
                 }
             ],
             "justMyCode": true
+        },
+        {
+            "name": "Python Debugger4: Remote Attach",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 8104
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "/app"
+                }
+            ],
+            "justMyCode": true
+        },
+        {
+            "name": "Python Debugger5: Remote Attach",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 8105
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "/app"
+                }
+            ],
+            "justMyCode": true
         }
     ],
     "compounds": [
     {
       "name": "Debug Containers",
-      "configurations": ["Python Debugger1: Remote Attach", "Python Debugger2: Remote Attach","Python Debugger3: Remote Attach"]
+      "configurations": ["Python Debugger1: Remote Attach", "Python Debugger2: Remote Attach",
+      "Python Debugger3: Remote Attach","Python Debugger4: Remote Attach","Python Debugger5: Remote Attach"]
     }
   ]
 }
