@@ -32,32 +32,53 @@ class ChordNodeReference:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                 s.connect((self.ip, self.port))
                 s.sendall(f'{op},{data}'.encode('utf-8'))
-                return s.recv(1024)
+                s.settimeout(5)  # 5 segundos de tiempo de espera
+                try:
+                    return s.recv(1024)
+                except socket.timeout:
+                    print("Tiempo de espera agotado", flush=True)
+                    return b''
         except Exception as e:
-            print(f"Error sending data: {e}")
+            print(f"Error sending data: {e}",flush=True)
             return b''
 
     # Method to find the successor of a given id
     def find_successor(self, id: int) -> 'ChordNodeReference':
-        response = self._send_data(FIND_SUCCESSOR, str(id)).decode().split(',')
-        return ChordNodeReference(response[1], self.port)
+        response = self._send_data(FIND_SUCCESSOR, str(id))
+        if response != b'':
+            response = response.decode().split(',')
+            return ChordNodeReference(response[1], self.port)
+        else:
+            raise Exception("Error finding successor")
 
     # Method to find the predecessor of a given id
     def find_predecessor(self, id: int) -> 'ChordNodeReference':
-        response = self._send_data(FIND_PREDECESSOR, str(id)).decode().split(',')
-        return ChordNodeReference(response[1], self.port)
+        response = self._send_data(FIND_PREDECESSOR, str(id))
+        if response != b'':
+            response = response.decode().split(',')
+            return ChordNodeReference(response[1], self.port)
+        else:
+            raise Exception("Error finding predecessor")
 
     # Property to get the successor of the current node
     @property
     def succ(self) -> 'ChordNodeReference':
-        response = self._send_data(GET_SUCCESSOR).decode().split(',')
-        return ChordNodeReference(response[1], self.port)
+        response = self._send_data(GET_SUCCESSOR)
+        if response != b'':
+            response = response.decode().split(',')
+            return ChordNodeReference(response[1], self.port)
+        else:
+            raise Exception("Error getting successor")
 
     # Property to get the predecessor of the current node
     @property
     def pred(self) -> 'ChordNodeReference':
-        response = self._send_data(GET_PREDECESSOR).decode().split(',')
-        return ChordNodeReference(response[1], self.port)
+        response = self._send_data(GET_PREDECESSOR)
+        if response != b'':
+            response = response.decode().split(',')
+            return ChordNodeReference(response[1], self.port)
+        else:
+            raise Exception("Error getting predecessor")
 
     # Method to notify the current node about another node
     def notify(self, node: 'ChordNodeReference'):
@@ -69,8 +90,12 @@ class ChordNodeReference:
 
     # Method to find the closest preceding finger of a given id
     def closest_preceding_finger(self, id: int) -> 'ChordNodeReference':
-        response = self._send_data(CLOSEST_PRECEDING_FINGER, str(id)).decode().split(',')
-        return ChordNodeReference(response[1], self.port)
+        response = self._send_data(CLOSEST_PRECEDING_FINGER, str(id))
+        if response != b'':
+            response = response.decode().split(',')
+            return ChordNodeReference(response[1], self.port)
+        else:
+            raise Exception("Error finding closest preceding finger")
 
     # Method to store a key-value pair in the current node
     def store_key(self, key: str, value: str):
@@ -78,8 +103,12 @@ class ChordNodeReference:
 
     # Method to retrieve a value for a given key from the current node
     def retrieve_key(self, key: str) -> str:
-        response = self._send_data(RETRIEVE_KEY, key).decode()
-        return response
+        response = self._send_data(RETRIEVE_KEY, key)
+        if response != b'':
+            response = response.decode()
+            return response
+        else:
+            raise Exception("Error retrieving key")
 
     def __str__(self) -> str:
         return f'{self.id},{self.ip},{self.port}'
@@ -149,17 +178,22 @@ class ChordNode:
         while True:
             try:
                 if self.succ.id != self.id:
-                    print('stabilize')
+                    print('stabilize',flush=True)
                     x = self.succ.pred
                     if x.id != self.id:
-                        print(x)
+                        print(x,flush=True)
                         if x and self._inbetween(x.id, self.id, self.succ.id):
                             self.succ = x
                         self.succ.notify(self.ref)
+                else:
+                    #Si entra aqui es por que el succesor es el mismo, esto solo debe ocurrir en la red de un solo nodo
+                    if self.pred:
+                        self.succ = self.pred
+                        self.succ.notify(self.ref)
             except Exception as e:
-                print(f"Error in stabilize: {e}")
+                print(f"Error in stabilize: {e}",flush=True)
 
-            print(f"successor : {self.succ} predecessor {self.pred}")
+            print(f"successor : {self.succ} predecessor {self.pred}",flush=True)
             time.sleep(10)
 
     # Notify method to inform the node about another node
@@ -178,7 +212,7 @@ class ChordNode:
                     self.next = 0
                 self.finger[self.next] = self.find_succ((self.id + 2 ** self.next) % 2 ** self.m)
             except Exception as e:
-                print(f"Error in fix_fingers: {e}")
+                print(f"Error in fix_fingers: {e}",flush=True)
             time.sleep(10)
 
     # Check predecessor method to periodically verify if the predecessor is alive
@@ -214,7 +248,7 @@ class ChordNode:
 
             while True:
                 conn, addr = s.accept()
-                print(f'new connection from {addr}')
+                print(f'new connection from {addr}',flush=True)
 
                 data = conn.recv(1024).decode().split(',')
 

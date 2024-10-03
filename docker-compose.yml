@@ -7,6 +7,11 @@ services:
       - "8001:8001"  
       - "8101:8002" # Puerto para el debugger
     command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
+    volumes:
+      - .:/app
+    networks:
+      chord:
+        ipv4_address: 172.28.1.10
   chord-node-2:
     build: .
     container_name: chord-node-2
@@ -14,7 +19,12 @@ services:
       - "8002:8001"  # Mapea el puerto 8002 del host al puerto 8001 del contenedor
       - "8102:8002"
     #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5679", "chord_node.py"]
-    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py","172.28.1.10"]
+    volumes:
+      - .:/app
+    networks:
+      chord:
+        ipv4_address: 172.28.1.11
 
   chord-node-3:
     build: .
@@ -23,4 +33,17 @@ services:
       - "8003:8001"  # Mapea el puerto 8003 del host al puerto 8001 del contenedor
       - "8103:8002"
     #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5680", "chord_node.py"]
-    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py","172.28.1.10"]
+    volumes:
+      - .:/app
+    networks:
+      chord:
+        ipv4_address: 172.28.1.12
+
+networks:
+  chord:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.28.1.0/24
+
