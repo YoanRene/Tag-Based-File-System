@@ -2,22 +2,20 @@
 FROM python:lastest
 
 # Crea un directorio de trabajo en el contenedor
-WORKDIR /src
+WORKDIR /app
 
 # Copia el archivo de dependencias
-COPY requirements.txt .
+COPY src/requirements.txt .
 
 # Instala las dependencias
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia el código de Chord a la imagen
-COPY chord_node.py .
+COPY src/chord_node.py .
 
 # Exponer el puerto que utilizará el nodo Chord
-EXPOSE 5000
+EXPOSE 8001
+EXPOSE 8002
 
 # Define la variable de entorno para el puerto (puedes cambiarlo según tu implementación)
-ENV PORT=5000
-
 # Define el comando para ejecutar tu nodo Chord
-CMD ["python", "chord_node.py"]
