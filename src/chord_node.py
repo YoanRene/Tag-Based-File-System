@@ -238,6 +238,7 @@ class ChordNode:
                         else:
                             self.pred.notify_pred(self.ref)
             except Exception as e:
+                print(f"Error in check_predecessor:{e}",flush=True)
                 self.pred = None
             time.sleep(10)
 
