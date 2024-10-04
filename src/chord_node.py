@@ -194,7 +194,7 @@ class ChordNode:
                             print(x,flush=True)
                             if x and self._inbetween(x.id, self.id, self.succ.id):
                                 self.succ = x
-                        self.succ.notify(self.ref)
+                            self.succ.notify(self.ref)
                     else:
                         print("Successor is dead finding a new successor")
                         self.succ = self.find_succ(self.succ.id)
