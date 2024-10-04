@@ -15,7 +15,8 @@ CLOSEST_PRECEDING_FINGER = 7
 STORE_KEY = 8
 RETRIEVE_KEY = 9
 NOTIFY_PREDECESSOR = 10
-
+CLIENT_STORE_KEY = 11
+CLIENT_RETRIEVE_KEY = 12
 
 # Function to hash a string using SHA-1 and return its integer representation
 def getShaRepr(data: str):
@@ -160,7 +161,7 @@ class ChordNode:
     def find_pred(self, id: int) -> 'ChordNodeReference':
         node = self
         while not self._inbetween(id, node.id, node.succ.id):
-            print(f'find_pred {id} {node.id} {node.succ.id}',flush=True)
+            # print(f'find_pred {id} {node.id} {node.succ.id}',flush=True)
             node = node.closest_preceding_finger(id)
         return node
 
@@ -186,14 +187,14 @@ class ChordNode:
         while True:
             try:
                 if self.succ.id != self.id:
-                    print('stabilize',flush=True)
+                    # print('stabilize',flush=True)
                     if self.succ.check_predecessor():
                         x = self.succ.pred
                         if x.id != self.id:
                             print(x,flush=True)
                             if x and self._inbetween(x.id, self.id, self.succ.id):
                                 self.succ = x
-                            self.succ.notify(self.ref)
+                        self.succ.notify(self.ref)
                     else:
                         print("Successor is dead finding a new successor")
                         self.succ = self.find_succ(self.succ.id)
@@ -204,8 +205,9 @@ class ChordNode:
                         self.succ.notify(self.ref)
             except Exception as e:
                 print(f"Error in stabilize: {e}",flush=True)
-
+            print(f'[{self.ip}] stabilize',flush=True)
             print(f"successor : {self.succ} predecessor {self.pred}",flush=True)
+            print(f'{len(self.data)}',flush=True)
             time.sleep(10)
     # Notify method to inform the node about another node
     def notify(self, node: 'ChordNodeReference'):
@@ -252,13 +254,15 @@ class ChordNode:
         key_hash = getShaRepr(key)
         node = self.find_succ(key_hash)
         node.store_key(key, value)
-        self.data[key] = value  # Store in the current node
-        self.succ.store_key(key, value)  # Replicate to the successor
+        # self.data[key] = value  # Store in the current node
+        # self.succ.store_key(key, value)  # Replicate to the successor
 
     # Retrieve key method to get a value for a given key
     def retrieve_key(self, key: str) -> str:
         key_hash = getShaRepr(key)
         node = self.find_succ(key_hash)
+        if node.id == self.id:
+            return self.data[key]
         return node.retrieve_key(key)
 
     # Start server method to handle incoming requests
@@ -270,7 +274,7 @@ class ChordNode:
 
             while True:
                 conn, addr = s.accept()
-                print(f'new connection from {addr}',flush=True)
+                # print(f'new connection from {addr}',flush=True)
 
                 data = conn.recv(1024).decode().split(',')
 
@@ -301,11 +305,20 @@ class ChordNode:
                     self.data[key] = value
                 elif option == RETRIEVE_KEY:
                     key = data[1]
-                    data_resp = self.data.get(key, '')
+                    response = self.data.get(key, '')
+                    conn.sendall(response.encode())
                 elif option == NOTIFY_PREDECESSOR:
                     id = int(data[1])
                     ip = data[2]
                     self.notify_pred(ChordNodeReference(ip, self.port))
+                elif option == CLIENT_STORE_KEY:
+                    key, value = data[1], data[2]
+                    self.store_key(key, value)
+                    conn.sendall(b'OK')
+                elif option == CLIENT_RETRIEVE_KEY:
+                    key = data[1]
+                    response = self.retrieve_key(key)
+                    conn.sendall(response.encode())
                 if data_resp:
                     response = f'{data_resp.id},{data_resp.ip}'.encode()
                     conn.sendall(response)
