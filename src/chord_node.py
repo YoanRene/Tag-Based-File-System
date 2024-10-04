@@ -32,6 +32,7 @@ class ChordNodeReference:
     def _send_data(self, op: int, data: str = None) -> bytes:
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(5)  # 5 segundos de tiempo de espera
                 s.connect((self.ip, self.port))
                 s.sendall(f'{op},{data}'.encode('utf-8'))
                 s.settimeout(5)  # 5 segundos de tiempo de espera
@@ -159,6 +160,7 @@ class ChordNode:
     def find_pred(self, id: int) -> 'ChordNodeReference':
         node = self
         while not self._inbetween(id, node.id, node.succ.id):
+            print(f'find_pred {id} {node.id} {node.succ.id}',flush=True)
             node = node.closest_preceding_finger(id)
         return node
 
@@ -185,15 +187,19 @@ class ChordNode:
             try:
                 if self.succ.id != self.id:
                     print('stabilize',flush=True)
-                    x = self.succ.pred
-                    if x.id != self.id:
-                        print(x,flush=True)
-                        if x and self._inbetween(x.id, self.id, self.succ.id):
-                            self.succ = x
-                        self.succ.notify(self.ref)
+                    if self.succ.check_predecessor():
+                        x = self.succ.pred
+                        if x.id != self.id:
+                            print(x,flush=True)
+                            if x and self._inbetween(x.id, self.id, self.succ.id):
+                                self.succ = x
+                            self.succ.notify(self.ref)
+                    else:
+                        print("Successor is dead finding a new successor")
+                        self.succ = self.find_succ(self.succ.id)
                 else:
                     #Si entra aqui es por que el succesor es el mismo, esto solo debe ocurrir en la red de un solo nodo
-                    if self.pred:
+                    if self.pred and self.pred.check_predecessor():
                         self.succ = self.pred
                         self.succ.notify(self.ref)
             except Exception as e:
@@ -201,7 +207,6 @@ class ChordNode:
 
             print(f"successor : {self.succ} predecessor {self.pred}",flush=True)
             time.sleep(10)
-
     # Notify method to inform the node about another node
     def notify(self, node: 'ChordNodeReference'):
         if node.id == self.id:
@@ -224,7 +229,6 @@ class ChordNode:
                 except Exception as e:
                     print(f"Error in fix_fingers: {e}",flush=True)
             time.sleep(10)
-
     # Check predecessor method to periodically verify if the predecessor is alive
     def check_predecessor(self):
         while True:
