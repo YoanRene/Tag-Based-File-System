@@ -215,13 +215,14 @@ class ChordNode:
     # Fix fingers method to periodically update the finger table
     def fix_fingers(self):
         while True:
-            try:
-                self.next += 1
-                if self.next >= self.m:
-                    self.next = 0
-                self.finger[self.next] = self.find_succ((self.id + 2 ** self.next) % 2 ** self.m)
-            except Exception as e:
-                print(f"Error in fix_fingers: {e}",flush=True)
+            for i in range(self.m):
+                try:
+                    self.next += 1
+                    if self.next >= self.m:
+                        self.next = 0
+                    self.finger[i] = self.find_succ((self.id + 2 ** i) % 2 ** self.m)
+                except Exception as e:
+                    print(f"Error in fix_fingers: {e}",flush=True)
             time.sleep(10)
 
     # Check predecessor method to periodically verify if the predecessor is alive
@@ -238,6 +239,7 @@ class ChordNode:
                         else:
                             self.pred.notify_pred(self.ref)
             except Exception as e:
+                print(f"Error in check_predecessor: {e}",flush=True)
                 self.pred = None
             time.sleep(10)
 
