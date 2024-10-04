@@ -65,7 +65,17 @@ services:
     networks:
       chord:
         ipv4_address: 172.28.1.15
-
+  client-node:
+    build: .
+    container_name: client-node
+    ports:
+      - "8201:8001"
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8001", "client.py","172.28.1.11"]
+    volumes:
+      - .:/app
+    networks:
+      chord:
+        ipv4_address: 172.28.1.21
 networks:
   chord:
     ipam:
