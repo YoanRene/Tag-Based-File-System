@@ -3,6 +3,12 @@ import threading
 import sys
 import time
 import hashlib
+import os
+
+FILE_KEYS_KEY = 'file_keys'
+STORAGE_DIR = "chord_storage/"
+os.makedirs(STORAGE_DIR, exist_ok=True)
+
 
 # Operation codes
 FIND_SUCCESSOR = 1
@@ -17,6 +23,8 @@ RETRIEVE_KEY = 9
 NOTIFY_PREDECESSOR = 10
 CLIENT_STORE_KEY = 11
 CLIENT_RETRIEVE_KEY = 12
+ELECTION = 13
+LEADER = 14
 
 # Function to hash a string using SHA-1 and return its integer representation
 def getShaRepr(data: str):
@@ -117,6 +125,13 @@ class ChordNodeReference:
             return response
         else:
             raise Exception("Error retrieving key")
+    
+    def send_election(self,node : 'ChordNodeReference'):
+        response = self._send_data(ELECTION,f'{node.id},{node.ip}')
+        return response != b''
+    
+    def propagate_leader(self,node):
+        self._send_data(LEADER,f'{node.ip},{node.ip}')
 
     def __str__(self) -> str:
         return f'{self.id},{self.ip},{self.port}'
@@ -138,12 +153,39 @@ class ChordNode:
         self.finger = [self.ref] * self.m  # Finger table
         self.next = 0  # Finger table index to fix next
         self.data = {}  # Dictionary to store key-value pairs
+        self.leader = self.ref
+        self.in_election = False
+        self.descarted = False
 
         # Start background threads for stabilization, fixing fingers, and checking predecessor
         threading.Thread(target=self.stabilize, daemon=True).start()  # Start stabilize thread
         threading.Thread(target=self.fix_fingers, daemon=True).start()  # Start fix fingers thread
         threading.Thread(target=self.check_predecessor, daemon=True).start()  # Start check predecessor thread
         threading.Thread(target=self.start_server, daemon=True).start()  # Start server thread
+        threading.Thread(target=self.check_leader,daemon=True).start #Start check Leader Thread
+
+
+    def start_election(self):
+        if not self.in_election:
+            self.in_election = True
+            self.propagate_election()
+            self.wait_election()
+
+    def wait_election(self):
+        time.sleep(5)
+        if self.in_election and not self.descarted:
+            self.leader = self.ref
+            self.in_election = False
+            self.propagate_leader()
+    
+    def propagate_election(self):
+        if self.succ.check_predecessor():
+            if self.succ.send_election(self.ref):
+                self.descarted = True
+    
+    def propagate_leader(self,node:ChordNodeReference = None):
+        if self.succ.check_predecessor():
+            self.succ.propagate_leader(node if node else self.ref)
 
     # Helper method to check if a value is in the range (start, end]
     def _inbetween(self, k: int, start: int, end: int) -> bool:
@@ -177,6 +219,7 @@ class ChordNode:
         if node:
             self.pred = None
             self.succ = node.find_successor(self.id)
+            self.leader = self.succ
             self.succ.notify(self.ref)
         else:
             self.succ = self.ref
@@ -187,7 +230,7 @@ class ChordNode:
         while True:
             try:
                 if self.succ.id != self.id:
-                    # print('stabilize',flush=True)
+                    print('stabilize',flush=True)
                     if self.succ.check_predecessor():
                         x = self.succ.pred
                         if x.id != self.id:
@@ -196,8 +239,7 @@ class ChordNode:
                                 self.succ = x
                             self.succ.notify(self.ref)
                     else:
-                        print("Successor is dead finding a new successor")
-                        self.succ = self.find_succ(self.succ.id)
+                        print("Succesor is dead")
                 else:
                     #Si entra aqui es por que el succesor es el mismo, esto solo debe ocurrir en la red de un solo nodo
                     if self.pred and self.pred.check_predecessor():
@@ -222,14 +264,13 @@ class ChordNode:
     # Fix fingers method to periodically update the finger table
     def fix_fingers(self):
         while True:
-            for i in range(self.m):
-                try:
-                    self.next += 1
-                    if self.next >= self.m:
-                        self.next = 0
-                    self.finger[i] = self.find_succ((self.id + 2 ** i) % 2 ** self.m)
-                except Exception as e:
-                    print(f"Error in fix_fingers: {e}",flush=True)
+            try:
+                self.next += 1
+                if self.next >= self.m:
+                    self.next = 0
+                self.finger[self.next] = self.find_succ((self.id + 2 ** self.next) % 2 ** self.m)
+            except Exception as e:
+                print(f"Error in fix_fingers: {e}",flush=True)
             time.sleep(10)
     # Check predecessor method to periodically verify if the predecessor is alive
     def check_predecessor(self):
@@ -246,7 +287,21 @@ class ChordNode:
                             self.pred.notify_pred(self.ref)
             except Exception as e:
                 print(f"Error in check_predecessor: {e}",flush=True)
-                self.pred = None
+                self.pred = None if not self.succ.check_predecessor() else self.succ
+                if self.pred == self.succ:
+                    self.pred.notify_pred(self.ref)
+            time.sleep(10)
+
+    # Check the leader to periodically verify if the leader is alive
+    def check_leader(self):
+        while True:
+            try:
+                if self.leader != self.ref:
+                    if not self.leader.check_predecessor():
+                        print("Leader is dead find a new Leader")
+                        self.start_election()
+            except Exception as e:
+                print(f'Leader check error: {e}')
             time.sleep(10)
 
     # Store key method to store a key-value pair and replicate to the successor
@@ -302,11 +357,48 @@ class ChordNode:
                     data_resp = self.closest_preceding_finger(id)
                 elif option == STORE_KEY:
                     key, value = data[1], data[2]
-                    self.data[key] = value
+                    if key == FILE_KEYS_KEY:
+                        self.data[key] = value
+                    else:
+                        """Guarda los archivos en el sistema de archivos."""
+                        file_path = os.path.join(STORAGE_DIR, key)
+                        
+                        # Guarda el contenido del archivo en la carpeta
+                        with open(file_path, 'wb') as f:
+                            f.write(value['content'])
+
+                        # Guarda la referencia en self.data
+                        self.data[key] = {'file_path': file_path, 'tags': value['tags']}
+
                 elif option == RETRIEVE_KEY:
                     key = data[1]
-                    response = self.data.get(key, '')
+                    
+                    # Verifica si la clave existe en self.data
+                    file_info = self.data.get(key, None)
+                    
+                    if file_info:
+                        # Si la clave es FILE_KEYS_KEY (que almacena una lista), devolver la lista directamente
+                        if key == FILE_KEYS_KEY:
+                            response = file_info
+                        else:
+                            # Leer el archivo desde el sistema de archivos
+                            file_path = file_info['file_path']
+                            try:
+                                with open(file_path, 'rb') as f:
+                                    file_content = f.read()
+                                
+                                # Preparar la respuesta con el contenido del archivo y las etiquetas
+                                response = {'content': file_content, 'tags': file_info['tags']}
+                            except FileNotFoundError:
+                                # Si el archivo no se encuentra, devolver un error
+                                response = "ERROR: File not found"
+                    else:
+                        # Si la clave no existe en self.data
+                        response = "ERROR: Key not found"
+                    
+                    # Enviar la respuesta al cliente
                     conn.sendall(response.encode())
+
                 elif option == NOTIFY_PREDECESSOR:
                     id = int(data[1])
                     ip = data[2]
@@ -319,6 +411,19 @@ class ChordNode:
                     key = data[1]
                     response = self.retrieve_key(key)
                     conn.sendall(response.encode())
+                elif option == ELECTION:
+                    id = int(data[1])
+                    ip = data[2]
+                    if self.id > id:
+                        data_resp = self.ref
+                    self.start_election()
+                elif option == LEADER:
+                    id = int(data[1])
+                    ip = data[2]
+                    self.in_election = False
+                    self.leader = ChordNodeReference(ip,self.port)
+                    if id !=self.id:
+                        self.propagate_leader(id)
                 if data_resp:
                     response = f'{data_resp.id},{data_resp.ip}'.encode()
                     conn.sendall(response)

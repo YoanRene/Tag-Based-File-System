@@ -28,8 +28,9 @@ class ChordClient:
             else:
                 print(f"Key '{key}' not found")
 
-# Example usage
-client = ChordClient("172.28.1.11", 8001)
-client.store_key("hello world", "world hello")
-client.retrieve_key("hello world")
-print("Done")
+if __name__ == '__main__':
+    # Example usage
+    client = ChordClient("172.28.1.11", 8001)
+    client.store_key("hello world", "world hello")
+    client.retrieve_key("hello world")
+    print("Done")
