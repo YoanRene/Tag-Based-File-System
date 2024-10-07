@@ -25,6 +25,7 @@ CLIENT_STORE_KEY = 11
 CLIENT_RETRIEVE_KEY = 12
 ELECTION = 13
 LEADER = 14
+REPLICATE_DATA = 15
 
 # Function to hash a string using SHA-1 and return its integer representation
 def getShaRepr(data: str):
@@ -112,6 +113,9 @@ class ChordNodeReference:
             return ChordNodeReference(response[1], self.port)
         else:
             raise Exception("Error finding closest preceding finger")
+
+    def replicate_data(self,key,value):
+        self._send_data(REPLICATE_DATA,f'{key},{value}')
 
     # Method to store a key-value pair in the current node
     def store_key(self, key: str, value: str):
@@ -238,6 +242,30 @@ class ChordNode:
                             if x and self._inbetween(x.id, self.id, self.succ.id):
                                 self.succ = x
                             self.succ.notify(self.ref)
+                            #Tenemos un nuevo sucesor, le enviamos los datos que le corresponden
+                            for key, value in self.data.items():
+                                key_hash = getShaRepr(key)
+                                if key == FILE_KEYS_KEY:
+                                    response = value
+                                else:
+                                    # Leer el archivo desde el sistema de archivos
+                                    file_path = value['file_path']
+                                    try:
+                                        with open(file_path, 'rb') as f:
+                                            file_content = f.read()
+                                        
+                                        # Preparar la respuesta con el contenido del archivo y las etiquetas
+                                        response = {'content': file_content, 'tags': value['tags']}
+                                    except FileNotFoundError:
+                                        # Si el archivo no se encuentra, devolver un error
+                                        response = "ERROR: File not found"
+                                if self._inbetween(key_hash,self.id,self.succ.id):
+                                    self.succ.store_key(key,response)
+                                if self._inbetween(key_hash,self.pred.id,self.id):
+                                    self.succ.replicate_data(key, response)
+                                if self._inbetween(key_hash,self.succ.id,self.succ.succ.id):
+                                    self.succ.replicate_data(key,response)
+                                    del self.data[key]
                     else:
                         print("Succesor is dead")
                 else:
@@ -256,7 +284,31 @@ class ChordNode:
         if node.id == self.id:
             pass
         if not self.pred or self._inbetween(node.id, self.pred.id, self.id):
+            previous_pred  = self.pred
             self.pred = node
+            for key, value in self.data.items():
+                key_hash = getShaRepr(key)
+                if key == FILE_KEYS_KEY:
+                    response = value
+                else:
+                    # Leer el archivo desde el sistema de archivos
+                    file_path = value['file_path']
+                    try:
+                        with open(file_path, 'rb') as f:
+                            file_content = f.read()
+                        
+                        # Preparar la respuesta con el contenido del archivo y las etiquetas
+                        response = {'content': file_content, 'tags': value['tags']}
+                    except FileNotFoundError:
+                        # Si el archivo no se encuentra, devolver un error
+                        response = "ERROR: File not found"
+                if self._inbetween(key_hash,self.pred.id,self.id):
+                    self.succ.replicate_data(key,response)
+                if previous_pred and self._inbetween(key_hash,previous_pred.id,self.pred.id):
+                    self.succ.store_key(key, response)
+                if previous_pred and self._inbetween(key_hash,previous_pred.pred.id,previous_pred.id):
+                    self.succ.replicate_data(key,response)
+                    del self.data[key]
     def notify_pred(self,node: 'ChordNodeReference'):
         if node.id == self.id:
             pass
@@ -285,6 +337,25 @@ class ChordNode:
                             self.pred = None
                         else:
                             self.pred.notify_pred(self.ref)
+                            # Update data in the new predecessor
+                            for key, value in self.data.items():
+                                key_hash = getShaRepr(key)
+                                if self._inbetween(key_hash, self.pred.id, self.id):
+                                    if key == FILE_KEYS_KEY:
+                                        response = value
+                                    else:
+                                        # Leer el archivo desde el sistema de archivos
+                                        file_path = value['file_path']
+                                        try:
+                                            with open(file_path, 'rb') as f:
+                                                file_content = f.read()
+                                            
+                                            # Preparar la respuesta con el contenido del archivo y las etiquetas
+                                            response = {'content': file_content, 'tags': value['tags']}
+                                        except FileNotFoundError:
+                                            # Si el archivo no se encuentra, devolver un error
+                                            response = "ERROR: File not found"
+                                    self.pred.replicate_data(key, response)
             except Exception as e:
                 print(f"Error in check_predecessor: {e}",flush=True)
                 self.pred = None if not self.succ.check_predecessor() else self.succ
@@ -355,7 +426,7 @@ class ChordNode:
                 elif option == CLOSEST_PRECEDING_FINGER:
                     id = int(data[1])
                     data_resp = self.closest_preceding_finger(id)
-                elif option == STORE_KEY:
+                elif option == STORE_KEY or option == REPLICATE_DATA:
                     key, value = data[1], data[2]
                     if key == FILE_KEYS_KEY:
                         self.data[key] = value
@@ -369,6 +440,10 @@ class ChordNode:
 
                         # Guarda la referencia en self.data
                         self.data[key] = {'file_path': file_path, 'tags': value['tags']}
+                    if option == STORE_KEY:
+                        #Replicate Data in Succesor and Predecessor
+                        self.pred.replicate_data(key,value)
+                        self.succ.replicate_data(key,value)
 
                 elif option == RETRIEVE_KEY:
                     key = data[1]
