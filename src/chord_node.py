@@ -1,3 +1,4 @@
+import random
 import socket
 import threading
 import sys
@@ -8,7 +9,7 @@ import os
 FILE_KEYS_KEY = 'file_keys'
 STORAGE_DIR = "chord_storage/"
 os.makedirs(STORAGE_DIR, exist_ok=True)
-
+DEFAULT_BROADCAST_PORT = 8255
 
 # Operation codes
 FIND_SUCCESSOR = 1
@@ -26,7 +27,9 @@ CLIENT_RETRIEVE_KEY = 12
 ELECTION = 13
 LEADER = 14
 REPLICATE_DATA = 15
-
+DISCOVER = 16
+ENTRY_POINT = 17
+GET_LEADER = 18
 # Function to hash a string using SHA-1 and return its integer representation
 def getShaRepr(data: str):
     return int(hashlib.sha1(data.encode()).hexdigest(), 16)
@@ -92,7 +95,14 @@ class ChordNodeReference:
             return ChordNodeReference(response[1], self.port)
         else:
             raise Exception("Error getting predecessor")
-
+    @property
+    def leader(self) -> 'ChordNodeReference':
+        response = self._send_data(GET_LEADER)
+        if response != b'':
+            response = response.decode().split(',')
+            return ChordNodeReference(response[1],self.port)
+        else:
+            raise Exception("Error getting leader")
     # Method to notify the current node about another node
     def notify(self, node: 'ChordNodeReference'):
         self._send_data(NOTIFY, f'{node.id},{node.ip}')
@@ -167,7 +177,7 @@ class ChordNode:
         threading.Thread(target=self.check_predecessor, daemon=True).start()  # Start check predecessor thread
         threading.Thread(target=self.start_server, daemon=True).start()  # Start server thread
         threading.Thread(target=self.check_leader,daemon=True).start #Start check Leader Thread
-
+        threading.Thread(target=self._start_udp_server, daemon=True).start()
 
     def start_election(self):
         if not self.in_election:
@@ -223,7 +233,7 @@ class ChordNode:
         if node:
             self.pred = None
             self.succ = node.find_successor(self.id)
-            self.leader = self.succ
+            self.leader = self.succ.leader
             self.succ.notify(self.ref)
         else:
             self.succ = self.ref
@@ -278,6 +288,12 @@ class ChordNode:
             print(f'[{self.ip}] stabilize',flush=True)
             print(f"successor : {self.succ} predecessor {self.pred}",flush=True)
             print(f'{len(self.data)}',flush=True)
+
+            if self.leader.id == self.id:
+                other_nodes = self.get_all_nodes()
+                for node in other_nodes:
+                    if node.leader.id > self.id:
+                        node.join(self.ref)
             time.sleep(10)
     # Notify method to inform the node about another node
     def notify(self, node: 'ChordNodeReference'):
@@ -391,6 +407,74 @@ class ChordNode:
             return self.data[key]
         return node.retrieve_key(key)
 
+    def get_all_nodes(self,timeout = 10)-> list[ChordNodeReference]:
+        """Discovers all active Chord nodes using UDP broadcast and TCP confirmation."""
+        nodes = []
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+                sock.bind(("", 0))
+                sock.settimeout(timeout)
+
+                discovery_message = f"{DISCOVER},{self.ip},{self.port}".encode()
+                sock.sendto(discovery_message, ('<broadcast>', DEFAULT_BROADCAST_PORT))
+                print(f"Node {self.ip}: Sent broadcast discovery request...",flush=True)
+
+                while True:
+                    try:
+                        data, addr = sock.recvfrom(1024)
+                        print(f"Node {self.ip}: Received broadcast response: {data.decode()}",flush=True)
+                        if data.decode().startswith(str(ENTRY_POINT)):
+                            node_ip = data.decode().split(',')[1]
+                            print(f"Node {self.ip}: Received entry point: {node_ip}",flush=True)
+                            if node_ip == self.ip:
+                                continue
+                            # if self._confirm_node(node_ip): #Confirm using TCP
+                            nodes.append(node_ip)
+                            print(f"Node {self.ip}: Discovered node: {node_ip}",flush=True)
+                    except socket.timeout:
+                        print("Timeout")
+                        break
+                    except Exception as e:
+                        print(f"Node {self.ip}: Error receiving broadcast response: {e}",flush=True)
+
+        except Exception as e:
+            print(f"Node {self.ip}: Error during broadcast discovery: {e}",flush=True)
+
+        return nodes
+
+
+    def autodiscover(self):
+        """Performs autodiscovery to find and connect to an existing node."""
+        print(f"Node {self.ip}: Performing autodiscovery...",flush=True)
+        discovered_nodes = self.get_all_nodes()
+        if discovered_nodes:
+            # Choose a random discovered node to join
+            other_ip = random.choice(discovered_nodes)
+            print(f"Node {self.ip}: Joining existing node at {other_ip}",flush=True)
+            self.join(ChordNodeReference(other_ip, self.port))
+        else:
+            print(f"Node {self.ip}: No other nodes found. Starting as a single node.",flush=True)
+            self.join(None)  # Join a single-node ring
+
+    def _start_udp_server(self):
+        """Listens for broadcast responses on the dedicated broadcast port."""
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("", DEFAULT_BROADCAST_PORT))  # Bind to the broadcast port
+            print(f"Node {self.ip}: Listening for broadcast responses on {DEFAULT_BROADCAST_PORT}",flush=True)
+            while True:
+                try:
+                    data, addr = sock.recvfrom(1024)
+                    print(f"Node {self.ip}: Received broadcast response: {data.decode().split(',')[0]} from {addr}",flush=True)
+                    if int(data.decode().split(',')[0])==DISCOVER:
+                        print(f"Node {self.ip}: Received discovery request from {data[1]}",flush=True)
+                        # Respond to discovery requests by announcing this node as an entry point
+                        sock.sendto(f"{ENTRY_POINT},{self.ip},{self.port}".encode('utf-8'),addr)
+                        print(f"Node {self.ip}: Sent discovery response: {ENTRY_POINT},{self.ip},{self.port}",flush=True)
+                except Exception as e:
+                    print(f"Node {self.ip}: Error receiving broadcast response: {e}",flush=True)
+
     # Start server method to handle incoming requests
     def start_server(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -499,6 +583,8 @@ class ChordNode:
                     self.leader = ChordNodeReference(ip,self.port)
                     if id !=self.id:
                         self.propagate_leader(id)
+                elif option == GET_LEADER:
+                    data_resp = self.leader if self.leader else self.ref
                 if data_resp:
                     response = f'{data_resp.id},{data_resp.ip}'.encode()
                     conn.sendall(response)
@@ -511,6 +597,7 @@ if __name__ == "__main__":
     if len(sys.argv) >= 2:
         other_ip = sys.argv[1]
         node.join(ChordNodeReference(other_ip, node.port))
-    
+    else:
+        node.autodiscover()
     while True:
         pass
