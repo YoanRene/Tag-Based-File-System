@@ -19,7 +19,7 @@ services:
       - "8002:8001"  # Mapea el puerto 8002 del host al puerto 8001 del contenedor
       - "8102:8002"
     #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5679", "chord_node.py"]
-    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py","172.28.1.11"]
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
     volumes:
       - .:/app
     networks:
@@ -33,7 +33,7 @@ services:
       - "8003:8001"  # Mapea el puerto 8003 del host al puerto 8001 del contenedor
       - "8103:8002"
     #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5680", "chord_node.py"]
-    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py","172.28.1.11"]
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
     volumes:
       - .:/app
     networks:
@@ -46,7 +46,7 @@ services:
       - "8004:8001"  # Mapea el puerto 8003 del host al puerto 8001 del contenedor
       - "8104:8002"
     #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5680", "chord_node.py"]
-    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py","172.28.1.11"]
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
     volumes:
       - .:/app
     networks:
@@ -59,7 +59,7 @@ services:
       - "8005:8001"  # Mapea el puerto 8003 del host al puerto 8001 del contenedor
       - "8105:8002"
     #command: ["python", "-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:5680", "chord_node.py"]
-    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py","172.28.1.11"]
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8002", "chord_node.py"]
     volumes:
       - .:/app
     networks:
@@ -70,7 +70,7 @@ services:
     container_name: client-node
     ports:
       - "8201:8001"
-    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8001", "client.py","172.28.1.11"]
+    command: ["python", "-Xfrozen_modules=off" ,"-m", "debugpy", "--wait-for-client", "--listen", "0.0.0.0:8001", "main.py"]
     volumes:
       - .:/app
     networks:

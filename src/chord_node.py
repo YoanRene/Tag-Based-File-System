@@ -1,3 +1,4 @@
+import json
 import random
 import socket
 import threading
@@ -48,7 +49,6 @@ class ChordNodeReference:
                 s.settimeout(5)  # 5 segundos de tiempo de espera
                 s.connect((self.ip, self.port))
                 s.sendall(f'{op},{data}'.encode('utf-8'))
-                s.settimeout(5)  # 5 segundos de tiempo de espera
                 try:
                     return s.recv(1024)
                 except socket.timeout:
@@ -170,6 +170,7 @@ class ChordNode:
         self.leader = self.ref
         self.in_election = False
         self.descarted = False
+        self.joining = True
 
         # Start background threads for stabilization, fixing fingers, and checking predecessor
         threading.Thread(target=self.stabilize, daemon=True).start()  # Start stabilize thread
@@ -238,7 +239,7 @@ class ChordNode:
         else:
             self.succ = self.ref
             self.pred = None
-
+        self.joining = False
     # Stabilize method to periodically verify and update the successor and predecessor
     def stabilize(self):
         while True:
@@ -289,11 +290,11 @@ class ChordNode:
             print(f"successor : {self.succ} predecessor {self.pred}",flush=True)
             print(f'{len(self.data)}',flush=True)
 
-            if self.leader.id == self.id:
-                other_nodes = self.get_all_nodes()
-                for node in other_nodes:
-                    if node.leader.id > self.id:
-                        node.join(self.ref)
+            # if self.leader.id == self.id:
+            #     other_nodes = self.get_all_nodes()
+            #     for node in other_nodes:
+            #         if node.leader.id > self.id:
+            #             node.join(self.ref)
             time.sleep(10)
     # Notify method to inform the node about another node
     def notify(self, node: 'ChordNodeReference'):
@@ -404,7 +405,35 @@ class ChordNode:
         key_hash = getShaRepr(key)
         node = self.find_succ(key_hash)
         if node.id == self.id:
-            return self.data[key]
+            if key in self.data:
+                # return self.data[key]
+            
+                # Verifica si la clave existe en self.data
+                file_info = self.data.get(key, None)
+                
+                if file_info:
+                    # Si la clave es FILE_KEYS_KEY (que almacena una lista), devolver la lista directamente
+                    if key == FILE_KEYS_KEY:
+                        response = file_info
+                    else:
+                        # Leer el archivo desde el sistema de archivos
+                        file_path = file_info['file_path']
+                        try:
+                            with open(file_path, 'rb') as f:
+                                file_content = f.read()
+                            
+                            # Preparar la respuesta con el contenido del archivo y las etiquetas
+                            response = {'content': file_content, 'tags': file_info['tags']}
+                        except FileNotFoundError:
+                            # Si el archivo no se encuentra, devolver un error
+                            response = b''
+                else:
+                    # Si la clave no existe en self.data
+                    response = b''
+                
+                return response
+            else:
+                return ''
         return node.retrieve_key(key)
 
     def get_all_nodes(self,timeout = 10)-> list[ChordNodeReference]:
@@ -430,7 +459,7 @@ class ChordNode:
                             if node_ip == self.ip:
                                 continue
                             # if self._confirm_node(node_ip): #Confirm using TCP
-                            nodes.append(node_ip)
+                            nodes.append(ChordNodeReference(node_ip, self.port))  # Save IP and port (node_ip)
                             print(f"Node {self.ip}: Discovered node: {node_ip}",flush=True)
                     except socket.timeout:
                         print("Timeout")
@@ -450,9 +479,9 @@ class ChordNode:
         discovered_nodes = self.get_all_nodes()
         if discovered_nodes:
             # Choose a random discovered node to join
-            other_ip = random.choice(discovered_nodes)
-            print(f"Node {self.ip}: Joining existing node at {other_ip}",flush=True)
-            self.join(ChordNodeReference(other_ip, self.port))
+            other_node = random.choice(discovered_nodes)
+            print(f"Node {self.ip}: Joining existing node at {other_node.ip}",flush=True)
+            self.join(other_node)
         else:
             print(f"Node {self.ip}: No other nodes found. Starting as a single node.",flush=True)
             self.join(None)  # Join a single-node ring
@@ -467,7 +496,7 @@ class ChordNode:
                 try:
                     data, addr = sock.recvfrom(1024)
                     print(f"Node {self.ip}: Received broadcast response: {data.decode().split(',')[0]} from {addr}",flush=True)
-                    if int(data.decode().split(',')[0])==DISCOVER:
+                    if int(data.decode().split(',')[0])==DISCOVER and not self.joining:
                         print(f"Node {self.ip}: Received discovery request from {data[1]}",flush=True)
                         # Respond to discovery requests by announcing this node as an entry point
                         sock.sendto(f"{ENTRY_POINT},{self.ip},{self.port}".encode('utf-8'),addr)
@@ -512,22 +541,35 @@ class ChordNode:
                     data_resp = self.closest_preceding_finger(id)
                 elif option == STORE_KEY or option == REPLICATE_DATA:
                     key, value = data[1], data[2]
-                    if key == FILE_KEYS_KEY:
-                        self.data[key] = value
+                    if value == 'None':
+                        del self.data[key]
+                    elif key == FILE_KEYS_KEY:
+                        self.data[key] = ','.join(data[2:])
                     else:
                         """Guarda los archivos en el sistema de archivos."""
                         file_path = os.path.join(STORAGE_DIR, key)
-                        
+                        v = data[2]
+                        while True:
+                            d = conn.recv(1024)
+                            if not d:
+                                break
+                            v = v + d.decode()
+                            if v.endswith('}'):
+                                break
+                        json_str = v.replace("'", "\"").replace("b\"", "\"")
+
+                        # Cargar el      JSON
+                        value = json.loads(json_str)
                         # Guarda el contenido del archivo en la carpeta
-                        with open(file_path, 'wb') as f:
+                        with open(file_path, 'w') as f:
                             f.write(value['content'])
 
                         # Guarda la referencia en self.data
                         self.data[key] = {'file_path': file_path, 'tags': value['tags']}
                     if option == STORE_KEY:
                         #Replicate Data in Succesor and Predecessor
-                        self.pred.replicate_data(key,value)
-                        self.succ.replicate_data(key,value)
+                        self.pred and self.pred.replicate_data(key,value)
+                        self.succ.id != self.id and self.succ.replicate_data(key,value)
 
                 elif option == RETRIEVE_KEY:
                     key = data[1]
@@ -550,10 +592,10 @@ class ChordNode:
                                 response = {'content': file_content, 'tags': file_info['tags']}
                             except FileNotFoundError:
                                 # Si el archivo no se encuentra, devolver un error
-                                response = "ERROR: File not found"
+                                response = b''
                     else:
                         # Si la clave no existe en self.data
-                        response = "ERROR: Key not found"
+                        response = b''
                     
                     # Enviar la respuesta al cliente
                     conn.sendall(response.encode())
@@ -564,12 +606,23 @@ class ChordNode:
                     self.notify_pred(ChordNodeReference(ip, self.port))
                 elif option == CLIENT_STORE_KEY:
                     key, value = data[1], data[2]
-                    self.store_key(key, value)
+                    if len(data) >2 and key != FILE_KEYS_KEY and value!='None':
+                        v = data[2]
+                        while True:
+                            d = conn.recv(1024)
+                            if not d:
+                                break
+                            v = v + d.decode()
+                            if v.endswith('}'):
+                                break
+                        self.store_key(key, v)
+                    else:
+                        self.store_key(key, ','.join(data[2:]))
                     conn.sendall(b'OK')
                 elif option == CLIENT_RETRIEVE_KEY:
                     key = data[1]
                     response = self.retrieve_key(key)
-                    conn.sendall(response.encode())
+                    conn.sendall(str(response).encode())
                 elif option == ELECTION:
                     id = int(data[1])
                     ip = data[2]
