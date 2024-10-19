@@ -31,6 +31,7 @@ REPLICATE_DATA = 15
 DISCOVER = 16
 ENTRY_POINT = 17
 GET_LEADER = 18
+JOIN = 19
 # Function to hash a string using SHA-1 and return its integer representation
 def getShaRepr(data: str):
     return int(hashlib.sha1(data.encode()).hexdigest(), 16)
@@ -106,6 +107,9 @@ class ChordNodeReference:
     # Method to notify the current node about another node
     def notify(self, node: 'ChordNodeReference'):
         self._send_data(NOTIFY, f'{node.id},{node.ip}')
+
+    def join(self, node:'ChordNodeReference'):
+        self._send_data(JOIN,f'{node.id},{node.ip}')
 
     #Method to notify the predecessor about the current node
     def notify_pred(self,node: 'ChordNodeReference'):
@@ -284,17 +288,35 @@ class ChordNode:
                     if self.pred and self.pred.check_predecessor():
                         self.succ = self.pred
                         self.succ.notify(self.ref)
+                        for key, value in self.data.items():
+                            key_hash = getShaRepr(key)
+                            if key == FILE_KEYS_KEY:
+                                response = value
+                            else:
+                                # Leer el archivo desde el sistema de archivos
+                                file_path = value['file_path']
+                                try:
+                                    with open(file_path, 'rb') as f:
+                                        file_content = f.read()
+                                    
+                                    # Preparar la respuesta con el contenido del archivo y las etiquetas
+                                    response = {'content': file_content, 'tags': value['tags']}
+                                except FileNotFoundError:
+                                    # Si el archivo no se encuentra, devolver un error
+                                    response = "ERROR: File not found"
+                            self.succ.replicate_data(key, response)
             except Exception as e:
                 print(f"Error in stabilize: {e}",flush=True)
             print(f'[{self.ip}] stabilize',flush=True)
             print(f"successor : {self.succ} predecessor {self.pred}",flush=True)
             print(f'{len(self.data)}',flush=True)
 
-            # if self.leader.id == self.id:
-            #     other_nodes = self.get_all_nodes()
-            #     for node in other_nodes:
-            #         if node.leader.id > self.id:
-            #             node.join(self.ref)
+            if self.leader.id == self.id and not self.joining:
+                other_nodes = self.get_all_nodes()
+                for node in other_nodes:
+                    if node.leader.id > self.id:
+                        print('join groups')
+                        # node.join(self.ref)
             time.sleep(10)
     # Notify method to inform the node about another node
     def notify(self, node: 'ChordNodeReference'):
@@ -598,7 +620,7 @@ class ChordNode:
                         response = b''
                     
                     # Enviar la respuesta al cliente
-                    conn.sendall(response.encode())
+                    conn.sendall(str(response).encode())
 
                 elif option == NOTIFY_PREDECESSOR:
                     id = int(data[1])
@@ -638,6 +660,11 @@ class ChordNode:
                         self.propagate_leader(id)
                 elif option == GET_LEADER:
                     data_resp = self.leader if self.leader else self.ref
+                elif option == JOIN:
+                    id = int(data[1])
+                    ip = data[2]
+                    self.join(ChordNodeReference(ip, self.port))
+                    self.joining = True
                 if data_resp:
                     response = f'{data_resp.id},{data_resp.ip}'.encode()
                     conn.sendall(response)

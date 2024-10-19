@@ -68,6 +68,7 @@ class ChordClient:
     def store_key(self, key, value):
         def _store():
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(10)    
                 s.connect((self.ip, self.port))
                 data = f"11,{key},{value}"  # STORE_KEY operation
                 s.sendall(data.encode())
@@ -83,6 +84,7 @@ class ChordClient:
     def retrieve_key(self, key):
         def _retrieve():
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(10)
                 s.connect((self.ip, self.port))
                 data = f"12,{key}"  # RETRIEVE_KEY operation
                 s.sendall(data.encode())
