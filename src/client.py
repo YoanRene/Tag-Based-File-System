@@ -97,10 +97,14 @@ class ChordClient:
                         while True:
                             d = s.recv(1024)
                             if not d:
+                                print(d)
                                 break
                             response = response + d.decode()
                             if response.endswith('}'):
+                                print("Endion")
                                 break
+                        print(response)
+                        print("______________________________________________")
                         return json.loads(response.replace("'", "\"").replace("b\"", "\""))
                 else:
                     print(f"Key '{key}' not found")

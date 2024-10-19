@@ -51,6 +51,18 @@ class ChordNodeReference:
                 s.connect((self.ip, self.port))
                 s.sendall(f'{op},{data}'.encode('utf-8'))
                 try:
+                    if op == RETRIEVE_KEY and data!=FILE_KEYS_KEY:
+                        response = ''
+                        while True:
+                            d = s.recv(1024)
+                            if not d:
+                                print(d)
+                                break
+                            response = response + d.decode()
+                            if response.endswith('}'):
+                                print("Endion")
+                                break
+                        return response
                     return s.recv(1024)
                 except socket.timeout:
                     print("Tiempo de espera agotado", flush=True)
@@ -139,7 +151,8 @@ class ChordNodeReference:
     def retrieve_key(self, key: str) -> str:
         response = self._send_data(RETRIEVE_KEY, key)
         if response != b'':
-            response = response.decode()
+            if type(response) == bytes:
+                response = response.decode()
             return response
         else:
             raise Exception("Error retrieving key")
@@ -311,11 +324,11 @@ class ChordNode:
             print(f"successor : {self.succ} predecessor {self.pred}",flush=True)
             print(f'{len(self.data)}',flush=True)
 
-            if self.leader.id == self.id and not self.joining:
-                other_nodes = self.get_all_nodes()
-                for node in other_nodes:
-                    if node.leader.id > self.id:
-                        print('join groups')
+            # if self.leader.id == self.id and not self.joining:
+            #     other_nodes = self.get_all_nodes()
+            #     for node in other_nodes:
+            #         if node.leader.id > self.id:
+            #             print('join groups')
                         # node.join(self.ref)
             time.sleep(10)
     # Notify method to inform the node about another node
@@ -644,6 +657,7 @@ class ChordNode:
                 elif option == CLIENT_RETRIEVE_KEY:
                     key = data[1]
                     response = self.retrieve_key(key)
+                    print(response)
                     conn.sendall(str(response).encode())
                 elif option == ELECTION:
                     id = int(data[1])

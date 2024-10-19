@@ -57,7 +57,10 @@ def update_file_keys(file_path):
 def get_file_keys():
   """Obtiene la lista de claves de la base de datos."""
   keys_str = client.retrieve_key(FILE_KEYS_KEY)
-  print(keys_str)
+
+  if keys_str == "b''":
+    print('No hay claves en la base de datos.')
+    return []
   if keys_str:
     return eval(keys_str)
   return []  # Si no existe, devuelve una lista vacía
