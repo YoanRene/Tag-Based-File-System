@@ -296,6 +296,8 @@ class ChordNode:
                                     del self.data[key]
                     else:
                         print("Succesor is dead")
+                        if self.pred == None:
+                            self.succ = self.ref
                 else:
                     #Si entra aqui es por que el succesor es el mismo, esto solo debe ocurrir en la red de un solo nodo
                     if self.pred and self.pred.check_predecessor():
@@ -338,6 +340,7 @@ class ChordNode:
         if not self.pred or self._inbetween(node.id, self.pred.id, self.id):
             previous_pred  = self.pred
             self.pred = node
+            delete_keys = []
             for key, value in self.data.items():
                 key_hash = getShaRepr(key)
                 if key == FILE_KEYS_KEY:
@@ -360,7 +363,9 @@ class ChordNode:
                     self.succ.store_key(key, response)
                 if previous_pred and self._inbetween(key_hash,previous_pred.pred.id,previous_pred.id):
                     self.succ.replicate_data(key,response)
-                    del self.data[key]
+                    delete_keys.append(key)
+            for key in delete_keys:
+                del self.data[key]
     def notify_pred(self,node: 'ChordNodeReference'):
         if node.id == self.id:
             pass
